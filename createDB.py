@@ -61,6 +61,7 @@ cur.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)
 
 
 
+
 # Создаем новую таблицу "orders" с новой структурой
 cur.execute('''CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY,
@@ -68,11 +69,13 @@ cur.execute('''CREATE TABLE IF NOT EXISTS orders (
                 address TEXT,
                 time TEXT,
                 dishList TEXT,
+                phone TEXT,
+                status TEXT,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )''')
 
 # Вставляем новые данные в таблицу "orders"
-cur.execute("INSERT INTO orders (id, user_id, address, time, dishList) VALUES (?, ?, ?, ?, ?)",
+cur.execute("INSERT INTO orders (id, user_id, address, time, dishList, phone, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (1, 1, "Some address", "Some time", json.dumps([
                 {
                     "id": 1,
@@ -86,7 +89,7 @@ cur.execute("INSERT INTO orders (id, user_id, address, time, dishList) VALUES (?
                     "id": 3,
                     "value": 1
                 }
-            ])))
+            ]), "1234567890", "pending"))
 
 # Сохраняем изменения в базе данных
 conn.commit()

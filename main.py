@@ -2,10 +2,11 @@
 import sqlite3
 import json
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 from flask_sqlalchemy import SQLAlchemy
 app = Flask(__name__)
-
+CORS(app)
 # получение меню
 @app.route('/menu', methods=['GET'])
 def get_menu():
@@ -411,6 +412,7 @@ def register_user():
     try:
         conn = sqlite3.connect('restaurant.db')
         cur = conn.cursor()
+        
         # Получение данных из запроса
         user_data = request.json
         name = user_data['name']
@@ -425,10 +427,25 @@ def register_user():
                     (name, email, password, role))
         conn.commit()
         
+        # Получение ID созданного пользователя
+        user_id = cur.lastrowid
+        
+        # Получение информации о созданном пользователе
+        cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = cur.fetchone()
+        
+        # Формирование ответа с информацией о созданном пользователе
+        user_data = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "role": user[4]
+        }
+        
         # Закрытие соединения с базой данных
         conn.close()
         
-        return jsonify({'message': 'User registered successfully'})
+        return jsonify({'user': user_data, 'message': 'User registered successfully'})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -533,62 +550,72 @@ def delete_order(order_id):
 # Создание нового заказа
 @app.route('/order', methods=['POST'])
 def create_order():
-    conn = sqlite3.connect('restaurant.db')
-    cur = conn.cursor()
+    try:
+        conn = sqlite3.connect('restaurant.db')
+        cur = conn.cursor()
 
-    # Получаем данные заказа из тела запроса
-    order_data = request.get_json()
+        # Получаем данные заказа из тела запроса
+        order_data = request.json
 
-    # Извлекаем необходимые поля из данных заказа
-    user_id = order_data['user_id']
-    address = order_data['address']
-    time = order_data['time']
-    dish_list = order_data['list']
+        # Извлекаем необходимые поля из данных заказа
+        user_id = order_data['user_id']
+        address = order_data['address']
+        time = order_data['time']
+        dish_list = order_data['list']
+        phone = order_data['phone']
+        status = order_data['status']
 
-    # Проверяем, существует ли пользователь с указанным ID
-    cur.execute("SELECT id FROM users WHERE id = ?", (user_id,))
-    existing_user = cur.fetchone()
+        # Проверяем, существует ли пользователь с указанным ID
+        cur.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        existing_user = cur.fetchone()
 
-    if existing_user:
-        # Вставляем новый заказ в таблицу "orders"
-        cur.execute("INSERT INTO orders (user_id, address, time, dishList) VALUES (?, ?, ?, ?)",
-                    (user_id, address, time, json.dumps(dish_list)))
-        conn.commit()
-        conn.close()
-        return jsonify({'message': 'Order created successfully'})
-    else:
-        conn.close()
-        return jsonify({'message': 'User not found'})
+        if existing_user:
+            # Вставляем новый заказ в таблицу "orders"
+            cur.execute("INSERT INTO orders (user_id, address, time, dishList, phone, status) VALUES (?, ?, ?, ?, ?, ?)",
+                        (user_id, address, time, json.dumps(dish_list), phone, status))
+            conn.commit()
+            conn.close()
+            return jsonify({'message': 'Order created successfully'})
+        else:
+            conn.close()
+            return jsonify({'message': 'User not found'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 #     {
-#   "user_id": 1,
-#   "address": "123 Main St, City",
-#   "time": "2023-06-02 15:30",
-#   "list": [
-#     {
-#       "id": 1,
-#       "value": 2
-#     },
-#     {
-#       "id": 2,
-#       "value": 1
-#     },
-#     {
-#       "id": 3,
-#       "value": 3
-#     }
-#   ]
-# }
+#     "id": 1,
+#     "user_id": 1,
+#     "address": "Some address",
+#     "time": "Some time",
+#     "dishList": [
+#       {
+#         "id": 1,
+#         "value": 2
+#       },
+#       {
+#         "id": 2,
+#         "value": 3
+#       },
+#       {
+#         "id": 3,
+#         "value": 1
+#       }
+#     ],
+#     "phone": "1234567890",
+#     "status": "pending"
+#   },
 
 
 
 # Получение информации о заказе по ID пользователя
 @app.route('/order/user/<int:user_id>', methods=['GET'])
+
 def get_order_by_user(user_id):
     conn = sqlite3.connect('restaurant.db')
     cur = conn.cursor()
-
+    
     # Получаем информацию о заказе пользователя из таблицы "orders"
-    cur.execute("SELECT * FROM orders WHERE user_id = ?", (user_id,))
+    cur.execute("SELECT orders.id, orders.user_id, orders.address, orders.time, orders.dishList, orders.phone, orders.status FROM orders JOIN users ON orders.user_id = users.id WHERE user_id = ?", (user_id,))
     orders = cur.fetchall()
 
     if orders:
@@ -596,14 +623,13 @@ def get_order_by_user(user_id):
         for order in orders:
             # Разбираем JSON-строку в список блюд
             dish_list = json.loads(order[4])
-            print(dish_list)
             dish_objects = []
 
             # Получаем объекты блюд из таблицы "all_dishes" по их идентификаторам
             for dish in dish_list:
                 cur.execute("SELECT * FROM all_dishes WHERE id = ?", (dish['id'],))
                 dish_data = cur.fetchone()
-                print(dish_data)
+
                 if dish_data:
                     # Формируем информацию о блюде в формате JSON с полем "value"
                     dish_object = {
@@ -623,7 +649,9 @@ def get_order_by_user(user_id):
                 "user_id": order[1],
                 "address": order[2],
                 "time": order[3],
-                "list": dish_objects
+                "list": dish_objects,
+                "phone": order[5],
+                "status": order[6]
             }
             response.append(order_data)
 
